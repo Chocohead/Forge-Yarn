@@ -1,0 +1,15 @@
+#Base project things
+/*
+!.gitignore
+!README.md
+!LICENSE.md
+
+#Code
+!src/**
+
+#Jeka and friends
+!jekaw*
+!jeka/
+jeka/*
+!jeka/def/
+!jeka/wrapper/
