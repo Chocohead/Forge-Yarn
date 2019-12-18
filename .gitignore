@@ -17,7 +17,13 @@ jeka/*
 !jeka/setup/
 jeka/setup/*
 !jeka/setup/Build/
+jeka/setup/Build/*
+!jeka/setup/Build/gradle
 !jeka/setup/Fabric/
 !jeka/setup/Forge/
 !jeka/setup/Merge/
-jeka/setup/Merge/
+jeka/setup/Merge/*
+!jeka/setup/Merge/included/
+jeka/setup/Merge/included/*
+!jeka/setup/Merge/remapped/
+jeka/setup/Merge/remapped/*
