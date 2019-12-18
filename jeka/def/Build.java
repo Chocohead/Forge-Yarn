@@ -1,4 +1,5 @@
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -60,6 +61,9 @@ class Build extends JkCommands {
 			//Remember to set the logging back if it was changed
 			if (increasedLogging) JkLog.setVerbosity(Verbosity.MUTE);
 
+			//Save the hashes now the build has completed
+			saveHashes(settings, hashes);
+
 			//Clean up the stuff used for building
 			JkPathTree.of(build).andMatching(false, "gradle/**").deleteContent();
 		}
@@ -90,5 +94,23 @@ class Build extends JkCommands {
 		}
 
 		return true;
+	}
+
+	private static void saveHashes(Path directory, Path hashSave) {
+		assert Files.notExists(hashSave);
+		assert Files.isDirectory(directory);
+
+		try (BufferedWriter writer = Files.newBufferedWriter(hashSave)) {
+			for (Path file : JkPathTree.of(directory).getFiles()) {
+				assert Files.isReadable(file);
+
+				writer.write(directory.relativize(file).toString());
+				writer.write(':');
+				writer.write(Hashing.SHA1(file));
+				writer.newLine();
+			}
+		} catch (IOException | UncheckedIOException e) {
+			throw new RuntimeException("Error writing hash save file at " + hashSave + " for " + directory, e);
+		}
 	}
 }
