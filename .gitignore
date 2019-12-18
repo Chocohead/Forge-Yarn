@@ -13,3 +13,11 @@
 jeka/*
 !jeka/def/
 !jeka/wrapper/
+
+!jeka/setup/
+jeka/setup/*
+!jeka/setup/Build/
+!jeka/setup/Fabric/
+!jeka/setup/Forge/
+!jeka/setup/Merge/
+jeka/setup/Merge/
