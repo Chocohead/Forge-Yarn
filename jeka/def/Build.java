@@ -34,6 +34,8 @@ class Build extends JkCommands {
 
 	private void doGradlePart(Path setupDir, Function<Path, JkPathTree> expectedResult, int results, String name, String... args) {
 		Path merge = setupDir.resolve("Merge");
+		JkUtilsPath.createDirectories(merge.resolve("includes"));
+		JkUtilsPath.createDirectories(merge.resolve("remapped"));
 		JkPathTree expectedResults = expectedResult.apply(merge);
 
 		Path settings = setupDir.resolve(name);
