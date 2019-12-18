@@ -5,6 +5,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.function.Function;
 
 import dev.jeka.core.api.file.JkPathTree;
 import dev.jeka.core.api.java.JkJavaProcess;
@@ -25,17 +26,23 @@ class Build extends JkCommands {
 	protected void setup() {
 		Path setupDir = getBaseDir().resolve(SETUP_DIR);
 
-		doGradlePart(setupDir, "Fabric", "eclipse", "--no-daemon");
+		doGradlePart(setupDir, merge -> {
+			return JkPathTree.of(merge.resolve("includes")).andMatching("build-*-fabric.sh", "proguard-*-fabric.pro");
+		}, 2, "Fabric", "eclipse", "--no-daemon");
 		//doGradlePart(setupDir, "Forge", "setup", "eclipse", "--no-daemon");
 	}
 
-	private void doGradlePart(Path setupDir, String name, String... args) {
-		Path classpath = setupDir.resolve(name + ".classpath");
+	private void doGradlePart(Path setupDir, Function<Path, JkPathTree> expectedResult, int results, String name, String... args) {
+		Path merge = setupDir.resolve("Merge");
+		JkPathTree expectedResults = expectedResult.apply(merge);
+
 		Path settings = setupDir.resolve(name);
 		Path hashes = setupDir.resolve(name + "-hashes.txt");
 
-		if (Files.notExists(classpath) || !checkHashes(settings, hashes)) {
+		if (expectedResults.count(results, false) != results || !checkHashes(settings, hashes)) {
+			expectedResults.deleteContent();
 			JkUtilsPath.deleteIfExists(hashes);
+
 			Path build = setupDir.resolve("Build");
 
 			//Move the stuff over needed for building
@@ -53,7 +60,6 @@ class Build extends JkCommands {
 			.andOptions("-Dorg.gradle.appname=Build").runClassSync("org.gradle.wrapper.GradleWrapperMain", args);
 
 			JkLog.startTask("Starting extractor");
-			Path merge = setupDir.resolve("Merge");
 			ClassPathExtractor.main(new String[] {build.toAbsolutePath().toString(),
 					merge.resolve("remap.jar").toAbsolutePath().toString(), merge.toAbsolutePath().toString()});
 			JkLog.endTask();
