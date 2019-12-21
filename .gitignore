@@ -27,3 +27,5 @@ jeka/setup/Merge/*
 jeka/setup/Merge/included/*
 !jeka/setup/Merge/remapped/
 jeka/setup/Merge/remapped/*
+!jeka/setup/Merge/mappings/
+jeka/setup/Merge/mappings/*

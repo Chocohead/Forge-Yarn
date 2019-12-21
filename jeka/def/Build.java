@@ -16,8 +16,10 @@ import dev.jeka.core.api.utils.JkUtilsPath;
 import dev.jeka.core.tool.JkCommands;
 import dev.jeka.core.tool.JkConstants;
 import dev.jeka.core.tool.JkImport;
+import dev.jeka.core.tool.JkImportRepo;
 
-@JkImport("libs/*jar")
+@JkImport("net.fabricmc:tiny-remapper:0.2.1.60")
+@JkImportRepo("https://maven.fabricmc.net")
 class Build extends JkCommands {
 	private static final String SETUP_DIR = JkConstants.JEKA_DIR + "/setup";
 	public boolean quietGradle; //Run with -quietGradle=true
@@ -28,8 +30,11 @@ class Build extends JkCommands {
 
 		doGradlePart(setupDir, merge -> {
 			return JkPathTree.of(merge.resolve("includes")).andMatching("build-*-fabric.sh", "proguard-*-fabric.pro");
-		}, 2, "Fabric", "eclipse", "--no-daemon");
-		//doGradlePart(setupDir, "Forge", "setup", "eclipse", "--no-daemon");
+		}, 2, "Fabric", "eclipseClasspath", "--no-daemon");
+		doGradlePart(setupDir, merge -> {
+			return JkPathTree.of(merge).andMatching("includes/build-*-forge.sh", "includes/build-*-forge-yarn.sh", "includes/proguard-*-forge.pro",
+					"mappings/*-mcp-yarn.tiny", "mappings/*-yarn-srg.tiny", "remapped/mc-*-forge-srg.jar", "remapped/mc-*-forge-yarn.jar", "Forge.classpath");
+		}, 8, "Forge", "eclipseClasspath", "--no-daemon");
 	}
 
 	private void doGradlePart(Path setupDir, Function<Path, JkPathTree> expectedResult, int results, String name, String... args) {
@@ -62,8 +67,7 @@ class Build extends JkCommands {
 			.andOptions("-Dorg.gradle.appname=Build").runClassSync("org.gradle.wrapper.GradleWrapperMain", args);
 
 			JkLog.startTask("Starting extractor");
-			ClassPathExtractor.main(new String[] {build.toAbsolutePath().toString(),
-					merge.resolve("remap.jar").toAbsolutePath().toString(), merge.toAbsolutePath().toString()});
+			ClassPathExtractor.main(name, build.toAbsolutePath(), merge.toAbsolutePath());
 			JkLog.endTask();
 
 			//Remember to set the logging back if it was changed
