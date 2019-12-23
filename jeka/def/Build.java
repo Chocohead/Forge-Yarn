@@ -4,40 +4,90 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.function.Function;
 
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+
+import dev.jeka.core.api.file.JkPathMatcher;
 import dev.jeka.core.api.file.JkPathTree;
 import dev.jeka.core.api.java.JkJavaProcess;
 import dev.jeka.core.api.java.project.JkJavaProject;
 import dev.jeka.core.api.system.JkLog;
 import dev.jeka.core.api.system.JkLog.Verbosity;
 import dev.jeka.core.api.utils.JkUtilsPath;
+import dev.jeka.core.api.utils.JkUtilsString;
+import dev.jeka.core.api.utils.JkUtilsXml;
 import dev.jeka.core.tool.JkCommands;
 import dev.jeka.core.tool.JkConstants;
 import dev.jeka.core.tool.JkImport;
 import dev.jeka.core.tool.JkImportRepo;
 
-@JkImport("net.fabricmc:tiny-remapper:0.2.1.60")
-@JkImportRepo("https://maven.fabricmc.net")
+@JkImport("com.github.Chocohead:Mercury:2306992") //net.fabricmc:tiny-remapper:0.2.1.61 and org.cadixdev:mercury:0.1.1.fabric-SNAPSHOT
+@JkImportRepo("https://jitpack.io") //From https://maven.fabricmc.net
 class Build extends JkCommands {
 	private static final String SETUP_DIR = JkConstants.JEKA_DIR + "/setup";
+	private static final String FORGE_PATH = "*/.gradle/caches/forge_gradle/minecraft_user_repo/net/minecraftforge/forge/*_mapped_*/forge-*_mapped_*-recomp.jar";
 	public boolean quietGradle; //Run with -quietGradle=true
 
 	@Override
 	protected void setup() {
 		Path setupDir = getBaseDir().resolve(SETUP_DIR);
 
-		doGradlePart(setupDir, merge -> {
+		boolean didFabric = doGradlePart(setupDir, merge -> {
 			return JkPathTree.of(merge.resolve("includes")).andMatching("build-*-fabric.sh", "proguard-*-fabric.pro");
-		}, 2, "Fabric", "eclipseClasspath", "--no-daemon");
-		doGradlePart(setupDir, merge -> {
+		}, 2, "Fabric", false, "eclipseClasspath", "--no-daemon");
+		boolean didForge = doGradlePart(setupDir, merge -> {
 			return JkPathTree.of(merge).andMatching("includes/build-*-forge.sh", "includes/build-*-forge-yarn.sh", "includes/proguard-*-forge.pro",
 					"mappings/*-mcp-yarn.tiny", "mappings/*-yarn-srg.tiny", "remapped/mc-*-forge-srg.jar", "remapped/mc-*-forge-yarn.jar", "Forge.classpath");
-		}, 8, "Forge", "eclipseClasspath", "--no-daemon");
+		}, 8, "Forge", didFabric, "eclipseClasspath", "--no-daemon");
+
+		Path classpath = setupDir.resolve("Merge/.classpath");
+		if (Files.notExists(classpath) || didForge) {
+			JkUtilsPath.copy(classpath.resolveSibling("Forge.classpath"), classpath, StandardCopyOption.REPLACE_EXISTING);
+
+			Document xml = JkUtilsXml.documentFrom(classpath);
+			NodeList classpathEntries = xml.getElementsByTagName("classpathentry");
+			JkPathMatcher forgeMatcher = JkPathMatcher.of(FORGE_PATH);
+
+			for (int i = 0; i < classpathEntries.getLength(); i++) {
+				Node node = classpathEntries.item(i);
+				assert node instanceof Element: "Unexpected node: " + node;
+
+				Element classpathEntry = (Element) node;
+				if ("lib".equals(classpathEntry.getAttribute("kind"))) {
+					String path = classpathEntry.getAttribute("path");
+					assert path != null;
+
+					Path jar;
+					if (forgeMatcher.matches(jar = Paths.get(path))) {
+						String sources = classpathEntry.getAttribute("sourcepath");
+						assert sources != null;
+
+						String jarName = jar.getFileName().toString();
+						assert JkUtilsString.countOccurence(jarName, '-') == 4;
+						String version = jarName.substring(6, jarName.indexOf('-', 7));
+
+						Path remappedJar = classpath.resolveSibling("remapped/mc-" + version + "-forge-yarn.jar");
+						Path mappings = classpath.resolveSibling("mappings/" + version + "-mcp-yarn.tiny");
+
+						Path remappedSources = remappedJar.resolveSibling("mc-" + version + "-forge-yarn-sources.jar");
+						remappedSources(jar, mappings, remappedSources);
+
+						classpathEntry.setAttribute("path", remappedJar.toAbsolutePath().toString());
+						classpathEntry.setAttribute("sourcepath", remappedSources.toAbsolutePath().toString());
+						break;
+					}
+				}
+			}
+		}
 	}
 
-	private void doGradlePart(Path setupDir, Function<Path, JkPathTree> expectedResult, int results, String name, String... args) {
+	private boolean doGradlePart(Path setupDir, Function<Path, JkPathTree> expectedResult, int results, String name, boolean force, String... args) {
 		Path merge = setupDir.resolve("Merge");
 		JkUtilsPath.createDirectories(merge.resolve("includes"));
 		JkUtilsPath.createDirectories(merge.resolve("remapped"));
@@ -46,7 +96,7 @@ class Build extends JkCommands {
 		Path settings = setupDir.resolve(name);
 		Path hashes = setupDir.resolve(name + "-hashes.txt");
 
-		if (expectedResults.count(results, false) != results || !checkHashes(settings, hashes)) {
+		if (force || expectedResults.count(results, false) != results || !checkHashes(settings, hashes)) {
 			expectedResults.deleteContent();
 			JkUtilsPath.deleteIfExists(hashes);
 
@@ -78,7 +128,11 @@ class Build extends JkCommands {
 
 			//Clean up the stuff used for building
 			JkPathTree.of(build).andMatching(false, "gradle/**").deleteContent();
+
+			return true;
 		}
+
+		return false;
 	}
 
 	private static boolean checkHashes(Path directory, Path hashSave) {
@@ -124,5 +178,11 @@ class Build extends JkCommands {
 		} catch (IOException | UncheckedIOException e) {
 			throw new RuntimeException("Error writing hash save file at " + hashSave + " for " + directory, e);
 		}
+	}
+
+	private static void remappedSources(Path input, Path mappings, Path output) {
+		JkUtilsPath.deleteIfExists(output);
+
+
 	}
 }
