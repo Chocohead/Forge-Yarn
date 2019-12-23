@@ -24,6 +24,7 @@ import dev.jeka.core.api.utils.JkUtilsString;
 import dev.jeka.core.api.utils.JkUtilsXml;
 import dev.jeka.core.tool.JkCommands;
 import dev.jeka.core.tool.JkConstants;
+import dev.jeka.core.tool.JkDoc;
 import dev.jeka.core.tool.JkImport;
 import dev.jeka.core.tool.JkImportRepo;
 
@@ -32,6 +33,7 @@ import dev.jeka.core.tool.JkImportRepo;
 class Build extends JkCommands {
 	private static final String SETUP_DIR = JkConstants.JEKA_DIR + "/setup";
 	private static final String FORGE_PATH = "*/.gradle/caches/forge_gradle/minecraft_user_repo/net/minecraftforge/forge/*_mapped_*/forge-*_mapped_*-recomp.jar";
+	@JkDoc("Avoid increasing the logging level from mute when running Gradle")
 	public boolean quietGradle; //Run with -quietGradle=true
 
 	@Override

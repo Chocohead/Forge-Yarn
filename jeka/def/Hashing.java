@@ -6,20 +6,9 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
+import dev.jeka.core.api.utils.JkUtilsString;
+
 public class Hashing {
-	private static final String HEXES = "0123456789ABCDEF";
-
-	public static String asHex(byte[] raw) {
-		if (raw == null) return null;
-		StringBuilder hex = new StringBuilder(2 * raw.length);
-
-		for (byte b : raw) {
-			hex.append(HEXES.charAt((b & 0xF0) >> 4)).append(HEXES.charAt(b & 0x0F));
-		}
-
-		return hex.toString();
-	}
-
 	private static MessageDigest getSHA1() {
 		try {
 			return MessageDigest.getInstance("SHA-1");
@@ -27,6 +16,7 @@ public class Hashing {
 			throw new AssertionError("Unable to find SHA-1 hasher?", e);
 		}
 	}
+
 	public static String SHA1(Path file) {
 		MessageDigest hasher = getSHA1();
 
@@ -41,6 +31,6 @@ public class Hashing {
 			throw new UncheckedIOException("Error reading " + file, e);
 		}
 
-		return asHex(hasher.digest());
+		return JkUtilsString.toHexString(hasher.digest());
 	}
 }
