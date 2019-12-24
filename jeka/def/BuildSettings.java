@@ -64,31 +64,31 @@ public class BuildSettings {
 				}
 
 				switch (name) {
-				case "classpath": //Should be File#pathSeparator but the files always use Unix endings
-					classpath = Arrays.stream(contents.split(":")).map(Paths::get).collect(Collectors.toSet());
+				case "classPath": //Should be File#pathSeparator but the files always use Unix endings
+					classpath = Arrays.stream(contents.split(":(?=[^\\\\/])")).map(BuildSettings::asPath).collect(Collectors.toSet());
 					assert classpath.stream().allMatch(Files::isRegularFile);
 					break;
 
 				case "mappingFile":
-					mappingFile = Paths.get(contents);
+					mappingFile = asPath(contents);
 					assert Files.isRegularFile(mappingFile);
 					break;
 
 				case "mcFile":
-					mcFile = Paths.get(contents);
+					mcFile = asPath(contents);
 					assert Files.isRegularFile(mcFile);
 					break;
 
 				case "mcVersion":
-					mcVersion = contents;
+					mcVersion = stripQuotes(contents);
 					break;
 
 				case "sourceNs":
-					sourceNs = contents;
+					sourceNs = stripQuotes(contents);
 					break;
 
 				case "targetNs":
-					targetNs = contents;
+					targetNs = stripQuotes(contents);
 					break;
 				}
 			}
@@ -108,6 +108,15 @@ public class BuildSettings {
 		this.sourceNs = sourceNs;
 		assert targetNs != null;
 		this.targetNs = targetNs;
+	}
+
+	private static String stripQuotes(String text) {
+		assert text.length() > 2: "Stripped everything from " + text;
+		return text.substring(1, text.length() - 1);
+	}
+
+	private static Path asPath(String path) {
+		return Paths.get(stripQuotes(path));
 	}
 
 	public Set<Path> libraries() {
