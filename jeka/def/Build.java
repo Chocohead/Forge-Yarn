@@ -1,17 +1,23 @@
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.util.Set;
 import java.util.function.Function;
 
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
+
+import org.cadixdev.lorenz.MappingSet;
+import org.cadixdev.mercury.Mercury;
+import org.cadixdev.mercury.remapper.MercuryRemapper;
 
 import dev.jeka.core.api.file.JkPathMatcher;
 import dev.jeka.core.api.file.JkPathTree;
@@ -28,11 +34,15 @@ import dev.jeka.core.tool.JkDoc;
 import dev.jeka.core.tool.JkImport;
 import dev.jeka.core.tool.JkImportRepo;
 
-@JkImport("com.github.Chocohead:Mercury:2306992") //net.fabricmc:tiny-remapper:0.2.1.61 and org.cadixdev:mercury:0.1.1.fabric-SNAPSHOT
+import net.fabricmc.tinyremapper.IMappingProvider.MappingAcceptor;
+import net.fabricmc.tinyremapper.IMappingProvider.Member;
+import net.fabricmc.tinyremapper.TinyUtils;
+
+@JkImport("com.github.Chocohead:Mercury:5660217") //net.fabricmc:tiny-remapper:0.2.1.61 and org.cadixdev:mercury:0.1.1.fabric-SNAPSHOT
 @JkImportRepo("https://jitpack.io") //From https://maven.fabricmc.net
 class Build extends JkCommands {
 	private static final String SETUP_DIR = JkConstants.JEKA_DIR + "/setup";
-	private static final String FORGE_PATH = "*/.gradle/caches/forge_gradle/minecraft_user_repo/net/minecraftforge/forge/*_mapped_*/forge-*_mapped_*-recomp.jar";
+	private static final String FORGE_PATH = "**/.gradle/caches/forge_gradle/minecraft_user_repo/net/minecraftforge/forge/*_mapped_*/forge-*_mapped_*-recomp.jar";
 	@JkDoc("Avoid increasing the logging level from mute when running Gradle")
 	public boolean quietGradle; //Run with -quietGradle=true
 
@@ -49,7 +59,7 @@ class Build extends JkCommands {
 		}, 8, "Forge", didFabric, "eclipseClasspath", "--no-daemon");
 
 		Path classpath = setupDir.resolve("Merge/.classpath");
-		if (Files.notExists(classpath) || didForge) {
+		out: if (Files.notExists(classpath) || didForge) {
 			JkUtilsPath.copy(classpath.resolveSibling("Forge.classpath"), classpath, StandardCopyOption.REPLACE_EXISTING);
 
 			Document xml = JkUtilsXml.documentFrom(classpath);
@@ -74,18 +84,32 @@ class Build extends JkCommands {
 						assert JkUtilsString.countOccurence(jarName, '-') == 4;
 						String version = jarName.substring(6, jarName.indexOf('-', 7));
 
-						Path remappedJar = classpath.resolveSibling("remapped/mc-" + version + "-forge-yarn.jar");
+						BuildSettings settings = new BuildSettings(classpath.resolveSibling("includes/build-" + version + "-forge-yarn.sh"));
+						assert settings.mcVersion.equals(version);
+						assert settings.mcFile.equals(classpath.resolveSibling("remapped/mc-" + version + "-forge-yarn.jar"));
+						assert settings.mappingFile.equals(classpath.resolveSibling("mappings/" + version + "-yarn-srg.tiny"));
+
 						Path mappings = classpath.resolveSibling("mappings/" + version + "-mcp-yarn.tiny");
+						Path remappedSources = settings.mcFile.resolveSibling("mc-" + version + "-forge-yarn-sources.jar");
+						remappedSources(Paths.get(sources), jar, settings.libraries(), mappings, remappedSources);
 
-						Path remappedSources = remappedJar.resolveSibling("mc-" + version + "-forge-yarn-sources.jar");
-						remappedSources(jar, mappings, remappedSources);
-
-						classpathEntry.setAttribute("path", remappedJar.toAbsolutePath().toString());
+						classpathEntry.setAttribute("path", settings.mcFile.toAbsolutePath().toString());
 						classpathEntry.setAttribute("sourcepath", remappedSources.toAbsolutePath().toString());
-						break;
+
+						try (OutputStream out = Files.newOutputStream(classpath)) {
+							JkUtilsXml.output(xml, out);
+						} catch (IOException e) {
+							throw new RuntimeException("Error writing classpath file to " + classpath, e);
+						}
+						break out;
 					}
+
+					JkLog.trace("Ignored non-Forge dependency: " + jar);
 				}
 			}
+
+			JkUtilsPath.deleteFile(classpath); //Nothing changed
+			throw new IllegalStateException("Unable to find Forge dependency in .classpath file?");
 		}
 	}
 
@@ -182,9 +206,61 @@ class Build extends JkCommands {
 		}
 	}
 
-	private static void remappedSources(Path input, Path mappings, Path output) {
+	private static void remappedSources(Path input, Path realJar, Set<Path> classpath, Path mappingFile, Path output) {
 		JkUtilsPath.deleteIfExists(output);
 
+		Mercury mercury = new Mercury();
 
+		//Add everything to the classpath
+		mercury.getClassPath().addAll(classpath);
+		mercury.getClassPath().add(realJar);
+
+		MappingSet mappings = MappingSet.create();
+		TinyUtils.createTinyMappingProvider(mappingFile, "mcp", "named").load(new MappingAcceptor() {
+			@Override
+			public void acceptClass(String mcpName, String yarnName) {
+				mappings.getOrCreateClassMapping(mcpName).setDeobfuscatedName(yarnName);
+			}
+
+			@Override
+			public void acceptMethod(Member method, String yarnName) {
+				mappings.getOrCreateClassMapping(method.owner).getOrCreateMethodMapping(method.name, method.desc).setDeobfuscatedName(yarnName);
+			}
+
+			@Override
+			public void acceptMethodArg(Member method, int lvIndex, String yarnName) {
+				mappings.getOrCreateClassMapping(method.owner).getOrCreateMethodMapping(method.name, method.desc).createParameterMapping(lvIndex, yarnName);
+			}
+
+			@Override
+			public void acceptMethodVar(Member method, int lvIndex, int startOpIndex, int asmIndex, String yarnName) {
+				//Lorenz has no notion of local variables
+			}
+
+			@Override
+			public void acceptField(Member field, String yarnName) {
+				mappings.getOrCreateClassMapping(field.owner).getOrCreateFieldMapping(field.name, field.desc).setDeobfuscatedName(yarnName);
+				assert field.owner.equals(mappings.getOrCreateClassMapping(field.owner).getFullObfuscatedName()):
+					field.owner + '#' + field.name + " has the wrong owner: " + mappings.getOrCreateClassMapping(field.owner).getFullObfuscatedName();
+				assert field.name.equals(mappings.getOrCreateClassMapping(field.owner).getOrCreateFieldMapping(field.name, field.desc).getObfuscatedName());
+				assert yarnName.equals(mappings.getOrCreateClassMapping(field.owner).getOrCreateFieldMapping(field.name, field.desc).getDeobfuscatedName());
+			}
+		});
+		mercury.getProcessors().add(MercuryRemapper.create(mappings));
+
+		Path tempSources = JkUtilsPath.createTempDirectory(input.getFileName().toString());
+		try (JkPathTree jar = JkPathTree.ofZip(input)) {
+			jar.copyTo(tempSources);
+		}
+
+		try (JkPathTree jar = JkPathTree.ofZip(output)) {
+			jar.createIfNotExist();
+
+			mercury.rewrite(tempSources, jar.getRoot());
+		} catch (Exception e) {
+			throw new RuntimeException("Error remapping Forge jar", e);
+		}
+
+		System.gc(); //Account for JDT bug: https://github.com/CadixDev/Mercury/issues/2
 	}
 }
