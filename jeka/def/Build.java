@@ -38,7 +38,7 @@ import net.fabricmc.tinyremapper.IMappingProvider.MappingAcceptor;
 import net.fabricmc.tinyremapper.IMappingProvider.Member;
 import net.fabricmc.tinyremapper.TinyUtils;
 
-@JkImport("com.github.Chocohead:Mercury:5660217") //net.fabricmc:tiny-remapper:0.2.1.61 and org.cadixdev:mercury:0.1.1.fabric-SNAPSHOT
+@JkImport("com.github.Chocohead:Mercury:1cc277b") //net.fabricmc:tiny-remapper:0.2.1.62 and org.cadixdev:mercury:0.1.1.fabric-SNAPSHOT
 @JkImportRepo("https://jitpack.io") //From https://maven.fabricmc.net
 class Build extends JkCommands {
 	private static final String SETUP_DIR = JkConstants.JEKA_DIR + "/setup";
