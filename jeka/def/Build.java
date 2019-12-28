@@ -217,18 +217,25 @@ class Build extends JkCommands {
 
 		MappingSet mappings = MappingSet.create();
 		TinyUtils.createTinyMappingProvider(mappingFile, "mcp", "named").load(new MappingAcceptor() {
+			private boolean allPresent(Member member) {
+				return !JkUtilsString.isBlank(member.owner) && !JkUtilsString.isBlank(member.name) && !JkUtilsString.isBlank(member.desc);
+			}
+
 			@Override
 			public void acceptClass(String mcpName, String yarnName) {
+				assert !JkUtilsString.isBlank(mcpName) && !JkUtilsString.isBlank(yarnName);
 				mappings.getOrCreateClassMapping(mcpName).setDeobfuscatedName(yarnName);
 			}
 
 			@Override
 			public void acceptMethod(Member method, String yarnName) {
+				assert allPresent(method) && !JkUtilsString.isBlank(yarnName);
 				mappings.getOrCreateClassMapping(method.owner).getOrCreateMethodMapping(method.name, method.desc).setDeobfuscatedName(yarnName);
 			}
 
 			@Override
 			public void acceptMethodArg(Member method, int lvIndex, String yarnName) {
+				assert allPresent(method) && !JkUtilsString.isBlank(yarnName);
 				mappings.getOrCreateClassMapping(method.owner).getOrCreateMethodMapping(method.name, method.desc).createParameterMapping(lvIndex, yarnName);
 			}
 
@@ -239,11 +246,8 @@ class Build extends JkCommands {
 
 			@Override
 			public void acceptField(Member field, String yarnName) {
+				assert allPresent(field) && !JkUtilsString.isBlank(yarnName);
 				mappings.getOrCreateClassMapping(field.owner).getOrCreateFieldMapping(field.name, field.desc).setDeobfuscatedName(yarnName);
-				assert field.owner.equals(mappings.getOrCreateClassMapping(field.owner).getFullObfuscatedName()):
-					field.owner + '#' + field.name + " has the wrong owner: " + mappings.getOrCreateClassMapping(field.owner).getFullObfuscatedName();
-				assert field.name.equals(mappings.getOrCreateClassMapping(field.owner).getOrCreateFieldMapping(field.name, field.desc).getObfuscatedName());
-				assert yarnName.equals(mappings.getOrCreateClassMapping(field.owner).getOrCreateFieldMapping(field.name, field.desc).getDeobfuscatedName());
 			}
 		});
 		mercury.getProcessors().add(MercuryRemapper.create(mappings));
