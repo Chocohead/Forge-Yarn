@@ -3,10 +3,13 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.util.Arrays;
 import java.util.Set;
 import java.util.function.Function;
 
@@ -16,6 +19,9 @@ import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
 import org.cadixdev.lorenz.MappingSet;
+import org.cadixdev.lorenz.impl.model.MethodMappingImpl;
+import org.cadixdev.lorenz.model.MethodMapping;
+import org.cadixdev.lorenz.model.MethodParameterMapping;
 import org.cadixdev.mercury.Mercury;
 import org.cadixdev.mercury.remapper.MercuryRemapper;
 
@@ -217,6 +223,34 @@ class Build extends JkCommands {
 
 		MappingSet mappings = MappingSet.create();
 		TinyUtils.createTinyMappingProvider(mappingFile, "mcp", "named").load(new MappingAcceptor() {
+			private final Field parameters; {
+				try {
+					parameters = MethodMappingImpl.class.getDeclaredField("parameters");
+					parameters.setAccessible(true);
+
+					//Breaks with J12+ but so do other things right now
+					Field modifiers = Field.class.getDeclaredField("modifiers");
+					modifiers.setAccessible(true);
+					modifiers.setInt(parameters, modifiers.getInt(parameters) & ~Modifier.FINAL);
+				} catch (ReflectiveOperationException e) {
+					throw new AssertionError("Why would it not be happy?", e);
+				}
+			}
+
+			private void ensureEnoughParameters(MethodMapping mapping, int length) {
+				assert mapping instanceof MethodMappingImpl;
+
+				try {
+					MethodParameterMapping[] params = (MethodParameterMapping[]) parameters.get(mapping);
+
+					if (params.length < length) {
+						parameters.set(mapping, Arrays.copyOf(params, length));
+					}
+				} catch (ReflectiveOperationException e) {
+					throw new AssertionError("Why would it not be happy?", e);
+				}
+			}
+
 			private boolean allPresent(Member member) {
 				return !JkUtilsString.isBlank(member.owner) && !JkUtilsString.isBlank(member.name) && !JkUtilsString.isBlank(member.desc);
 			}
@@ -236,7 +270,10 @@ class Build extends JkCommands {
 			@Override
 			public void acceptMethodArg(Member method, int lvIndex, String yarnName) {
 				assert allPresent(method) && !JkUtilsString.isBlank(yarnName);
-				mappings.getOrCreateClassMapping(method.owner).getOrCreateMethodMapping(method.name, method.desc).createParameterMapping(lvIndex, yarnName);
+
+				MethodMapping mapping = mappings.getOrCreateClassMapping(method.owner).getOrCreateMethodMapping(method.name, method.desc);
+				ensureEnoughParameters(mapping, lvIndex + 1);
+				mapping.createParameterMapping(lvIndex, yarnName);
 			}
 
 			@Override
