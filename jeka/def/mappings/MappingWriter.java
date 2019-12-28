@@ -79,6 +79,9 @@ public class MappingWriter {
 									if (yarnArg != null) {
 										assert srgArgs.length > arg + 1;
 										mcpArgs[arg] = srgArg = srgArgs[arg + 1].substring(0, srgArgs[arg + 1].length() - 2) + arg + '_';
+
+										assert methodMapping.getYarnParameter(srgArgs.length - 1) == null;
+										srgArgs = Arrays.copyOf(srgArgs, srgArgs.length - 1);
 										break out;
 									}
 								} else {
