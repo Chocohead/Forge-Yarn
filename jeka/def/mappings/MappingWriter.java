@@ -53,6 +53,8 @@ public class MappingWriter {
 					assert allPresent(methodMapping): asString(methodMapping);
 
 					writer.write("\tm\t");
+					writer.write(methodMapping.yarnDesc);
+					writer.write('\t');
 					writeAll(writer, escapedNames, methodMapping);
 
 					if (isConstructor) {
@@ -111,6 +113,8 @@ public class MappingWriter {
 					assert allPresent(fieldMapping): asString(fieldMapping);
 
 					writer.write("\tf\t");
+					writer.write(fieldMapping.yarnDesc);
+					writer.write('\t');
 					writeAll(writer, escapedNames, fieldMapping);
 				}
 			}
